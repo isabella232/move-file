@@ -1,4 +1,4 @@
-const { dirname, join, resolve } = require('path')
+const { dirname, join, resolve, relative, isAbsolute } = require('path')
 const rimraf_ = require('rimraf')
 const { promisify } = require('util')
 const {
@@ -90,7 +90,10 @@ const moveFile = async (source, destination, options = {}, root = true, symlinks
 
   if (root) {
     await Promise.all(symlinks.map(async ({ source, destination }) => {
-      const target = await readlink(source)
+      let target = await readlink(source)
+      // junction symlinks in windows will be absolute paths, so we need to make sure they point to the destination
+      if (isAbsolute(target))
+        target = resolve(destination, relative(source, target))
       // try to determine what the actual file is so we can create the correct type of symlink in windows
       let targetStat
       try {
@@ -140,13 +143,16 @@ const moveFileSync = (source, destination, options = {}, root = true, symlinks =
 
   if (root) {
     for (const { source, destination } of symlinks) {
-        const target = readlinkSync(source)
-        // try to determine what the actual file is so we can create the correct type of symlink in windows
-        let targetStat
-        try {
-          targetStat = statSync(resolve(dirname(source), target))
-        } catch (err) {}
-        symlinkSync(target, destination, targetStat && targetStat.isDirectory() ? 'junction' : 'file')
+      let target = readlinkSync(source)
+      // junction symlinks in windows will be absolute paths, so we need to make sure they point to the destination
+      if (isAbsolute(target))
+        target = resolve(destination, relative(source, target))
+      // try to determine what the actual file is so we can create the correct type of symlink in windows
+      let targetStat
+      try {
+        targetStat = statSync(resolve(dirname(source), target))
+      } catch (err) {}
+      symlinkSync(target, destination, targetStat && targetStat.isDirectory() ? 'junction' : 'file')
     }
     rimrafSync(source)
   }
